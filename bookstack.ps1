@@ -1,7 +1,72 @@
+<#
+.SYNOPSIS
+Automates the installation and configuration of the BookStack application on an IIS server with PHP and MySQL.
+
+.DESCRIPTION
+This script performs the complete setup of the BookStack application on a Windows Server running IIS. It installs required software components, configures PHP, creates the necessary database and user in MySQL, clones the BookStack repository, sets up an IIS site with SSL, and configures the environment.
+
+.PARAMETER sitePath
+Specifies the path where BookStack will be installed. Default is "C:\inet\bookstack".
+
+.PARAMETER UploadTempDir
+Specifies the temporary directory for file uploads in PHP. Default is "C:\inet\temp_dir".
+
+.PARAMETER SetDBRootUser
+Switch to indicate whether to set the MySQL root user password.
+
+.PARAMETER dbRootPassword
+Specifies the password for the MySQL root user if the SetDBRootUser switch is used. Default is "root_password".
+
+.PARAMETER dbPassword
+Specifies the password for the BookStack MySQL user. Default is "secure_password".
+
+.PARAMETER dbUser
+Specifies the MySQL username for the BookStack database. Default is "bookstack".
+
+.PARAMETER databaseName
+Specifies the name of the MySQL database to be created for BookStack. Default is "bookstack".
+
+.PARAMETER serverName
+Specifies the server name for IIS and SSL certificate purposes. Default is the hostname of the machine.
+
+.PARAMETER siteName
+Specifies the name of the IIS site to be created for BookStack. Default is "BookStack_Site".
+
+.PARAMETER envFilePath
+Specifies the path to the BookStack .env configuration file. Default is "$sitePath\.env".
+
+.PARAMETER virtualDirectoryAlias
+Specifies the alias for the virtual directory in IIS. Default is "bookstack".
+
+.PARAMETER caCertPath
+Specifies the path to the CA certificate for PHP SSL verification. Default is "C:\example.crt".
+
+.EXAMPLE
+.\Setup-BookStack.ps1 -sitePath "C:\inet\bookstack" -dbPassword "MySecurePassword" -SetDBRootUser -dbRootPassword "RootPassword123"
+
+This example installs and configures BookStack at "C:\inet\bookstack", sets the MySQL root password to "RootPassword123", and uses "MySecurePassword" for the BookStack database user.
+
+.NOTES
+Ensure that this script is run with administrative privileges. It installs software, modifies IIS configurations, and sets up a database, which all require elevated permissions.
+
+.LINK
+For more information on BookStack, visit the official documentation: https://www.bookstackapp.com/docs/
+#>
+
 [CmdletBinding()]
 param (
   [String]$sitePath = "C:\inet\bookstack",
-  [String]$UploadTempDir = "C:\inet\temp_dir"
+  [String]$UploadTempDir = "C:\inet\temp_dir",
+  [Switch]$SetDBRootUser = $false,
+  [SecureString]$dbRootPassword = "root_password",
+  [SecureString]$dbPassword = "secure_password",
+  [String]$dbUser = "bookstack",
+  [String]$databaseName = "bookstack",
+  [String]$serverName = ([System.Net.Dns]::GetHostByName($env:computerName)).HostName,
+  [String]$siteName = "BookStack_Site",
+  [String]$envFilePath = "$sitePath\.env",
+  [String]$virtualDirectoryAlias = "bookstack",
+  [String]$caCertPath = "C:\example.crt"
 )
 
 ## To-Dos
@@ -9,17 +74,8 @@ param (
 
 
 # Variables
-$databaseName = "bookstack"
-$dbUser = "bookstack_user"
-$dbPassword = "secure_password"
-$dbRootPassword = "root_password"
-$serverName = ([System.Net.Dns]::GetHostByName($env:computerName)).HostName
-$siteName = "BookStack_Site"
-$envFilePath = "$sitePath\.env"
 $phpExtensions = @("pdo_mysql", "mbstring", "ldap", "gd", "fileinfo")
-$virtualDirectoryAlias = "bookstack"
 $physicalPath = Join-Path $sitePath "public"
-$caCertPath = 'C:\example\cert.crt'
 
 ##################### prerequisites install step
 
@@ -99,9 +155,11 @@ FLUSH PRIVILEGES;
 "@
 
 # Execute SQL commands
-Write-Output "Executing SQL commands to edit root password"
-mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$dbRootPassword';"
-Write-Output "Executing SQL commands to create database and user"
+if ($SetDBRootUser) {
+  Write-Verbose "Setting root user password"
+  mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$dbRootPassword';"
+}
+Write-Verbose "Executing SQL commands to create database and user"
 mysql -u root -p"$dbRootPassword" -e "$sqlCommands"
 
 # Download bookstack
